@@ -12,6 +12,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
+import java.util.Objects;
 
 import android.Manifest;
 import android.annotation.SuppressLint;
@@ -22,6 +23,8 @@ import android.os.Build;
 import android.os.Bundle;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
+
+import com.google.android.gms.common.util.CollectionUtils;
 
 public class ImagePicker extends CordovaPlugin {
 
@@ -105,16 +108,26 @@ public class ImagePicker extends CordovaPlugin {
     @SuppressLint("InlinedApi")
     private boolean hasReadPermission() {
         return Build.VERSION.SDK_INT < 23 ||
-            PackageManager.PERMISSION_GRANTED == ContextCompat.checkSelfPermission(this.cordova.getActivity(), Manifest.permission.READ_EXTERNAL_STORAGE);
+            (Build.VERSION.SDK_INT < 32 && PackageManager.PERMISSION_GRANTED == ContextCompat.checkSelfPermission(this.cordova.getActivity(), Manifest.permission.READ_EXTERNAL_STORAGE)) ||
+            (Build.VERSION.SDK_INT >= 32 && PackageManager.PERMISSION_GRANTED == ContextCompat.checkSelfPermission(this.cordova.getActivity(), Manifest.permission.READ_MEDIA_IMAGES));
     }
 
     @SuppressLint("InlinedApi")
     private void requestReadPermission() {
         if (!hasReadPermission()) {
-            ActivityCompat.requestPermissions(
-                this.cordova.getActivity(),
-                new String[] {Manifest.permission.READ_EXTERNAL_STORAGE},
-                PERMISSION_REQUEST_CODE);
+            if (Build.VERSION.SDK_INT < 32 && !Objects.equals(PackageManager.PERMISSION_GRANTED, ContextCompat.checkSelfPermission(this.cordova.getActivity(), Manifest.permission.READ_EXTERNAL_STORAGE))) {
+                ActivityCompat.requestPermissions(
+                        this.cordova.getActivity(),
+                        new String[]{Manifest.permission.READ_EXTERNAL_STORAGE},
+                        PERMISSION_REQUEST_CODE);
+            }
+
+            if (Build.VERSION.SDK_INT >= 32 && !Objects.equals(PackageManager.PERMISSION_GRANTED, ContextCompat.checkSelfPermission(this.cordova.getActivity(), Manifest.permission.READ_MEDIA_IMAGES))) {
+                ActivityCompat.requestPermissions(
+                        this.cordova.getActivity(),
+                        new String[]{Manifest.permission.READ_MEDIA_IMAGES},
+                        PERMISSION_REQUEST_CODE);
+            }
         }
         // This method executes async and we seem to have no known way to receive the result
         // (that's why these methods were later added to Cordova), so simply returning ok now.
@@ -127,6 +140,13 @@ public class ImagePicker extends CordovaPlugin {
             final Bundle bigData = ResultIPC.get().getLargeData(sync);
       
             ArrayList<String> fileNames = bigData.getStringArrayList("MULTIPLEFILENAMES");
+            if (!CollectionUtils.isEmpty(fileNames)) {
+                for (int i = 0; i < fileNames.size(); i++) {
+                    if (fileNames.get(i).contains("%20")) {
+                        fileNames.set(i, fileNames.get(i).replace("%20", " "));
+                    }
+                }
+            }
     
             JSONArray res = new JSONArray(fileNames);
             callbackContext.success(res);
